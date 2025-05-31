@@ -24,12 +24,6 @@
 (define-constant ERR_METADATA_EXISTS (err u5))
 (define-constant ERR_METADATA_NOT_FOUND (err u6))
 
-;; Events
-(define-event transfer-event (from principal) (to principal) (amount uint))
-(define-event retire-event (owner principal) (amount uint))
-(define-event approve-event (owner principal) (spender principal) (amount uint))
-(define-event mint-event (recipient principal) (amount uint))
-
 ;; Initialize the contract
 (define-public (initialize)
     (begin
@@ -50,7 +44,7 @@
               (new-supply (+ current-supply amount)))
             (map-set balances recipient new-balance)
             (var-set total-supply new-supply)
-            (print (event-emit mint-event recipient amount))
+            (print {event: "mint", recipient: recipient, amount: amount})
             (ok true)
         )
     )
@@ -64,7 +58,7 @@
             (asserts! (>= sender-balance amount) ERR_INSUFFICIENT_BALANCE)
             (map-set balances tx-sender (- sender-balance amount))
             (map-set balances recipient (+ (default-to u0 (map-get? balances recipient)) amount))
-            (print (event-emit transfer-event tx-sender recipient amount))
+            (print {event: "transfer", sender: tx-sender, recipient: recipient, amount: amount})
             (ok true)
         )
     )
@@ -75,7 +69,7 @@
     (begin
         (asserts! (> amount u0) ERR_INVALID_AMOUNT)
         (map-set allowances {owner: tx-sender, spender: spender} amount)
-        (print (event-emit approve-event tx-sender spender amount))
+        (print {event: "approve", owner: tx-sender, spender: spender, amount: amount})
         (ok true)
     )
 )
@@ -91,7 +85,7 @@
             (map-set allowances {owner: owner, spender: tx-sender} (- allowance amount))
             (map-set balances owner (- owner-balance amount))
             (map-set balances recipient (+ (default-to u0 (map-get? balances recipient)) amount))
-            (print (event-emit transfer-event owner recipient amount))
+            (print {event: "transfer", sender: owner, recipient: recipient, amount: amount})
             (ok true)
         )
     )
@@ -107,7 +101,7 @@
             (asserts! (>= sender-balance amount) ERR_INSUFFICIENT_BALANCE)
             (map-set balances tx-sender (- sender-balance amount))
             (var-set total-supply new-supply)
-            (print (event-emit retire-event tx-sender amount))
+            (print {event: "retire", owner: tx-sender, amount: amount})
             (ok true)
         )
     )
@@ -128,6 +122,7 @@
             location: location,
             verified: verified
         })
+        (print {event: "metadata-added", batch-id: batch-id})
         (ok true)
     )
 )
