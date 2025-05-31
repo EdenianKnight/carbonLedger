@@ -413,7 +413,7 @@ For questions, issues, or support:
 
 - **Issues**: [GitHub Issues](https://github.com/your-org/carbon-credits-contract/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/your-org/carbon-credits-contract/discussions)
-- **Email**: <support@yourproject.com>
+- **Email**: <solomon.okomowho@gmail.com>
 
 ## Acknowledgments
 
