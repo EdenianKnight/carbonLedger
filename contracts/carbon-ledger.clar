@@ -37,15 +37,19 @@
 ;; Safe add function to prevent overflows
 (define-private (safe-add (a uint) (b uint))
     (let ((sum (+ a b)))
-        (asserts! (>= sum a) ERR_ARITHMETIC_OVERFLOW)
-        sum
+        (if (>= sum a)
+            sum
+            u0
+        )
     )
 )
 
 ;; Safe subtract function to prevent underflows
 (define-private (safe-sub (a uint) (b uint))
-    (asserts! (>= a b) ERR_INSUFFICIENT_BALANCE)
-    (- a b)
+    (if (>= a b)
+        (- a b)
+        u0
+    )
 )
 
 ;; Mint new carbon credits (only contract owner can mint)
@@ -61,6 +65,10 @@
             ;; Calculate new balances safely with overflow checks
             (let ((new-balance (safe-add current-balance amount))
                   (new-supply (safe-add current-supply amount)))
+                
+                ;; Check for overflow errors
+                (asserts! (> new-balance current-balance) ERR_ARITHMETIC_OVERFLOW)
+                (asserts! (> new-supply current-supply) ERR_ARITHMETIC_OVERFLOW)
                 
                 ;; Update state
                 (map-set balances recipient new-balance)
@@ -87,6 +95,10 @@
             (let ((new-sender-balance (safe-sub sender-balance amount))
                   (recipient-balance (default-to u0 (map-get? balances recipient)))
                   (new-recipient-balance (safe-add recipient-balance amount)))
+                
+                ;; Check for underflow/overflow
+                (asserts! (<= new-sender-balance sender-balance) ERR_INSUFFICIENT_BALANCE)
+                (asserts! (>= new-recipient-balance recipient-balance) ERR_ARITHMETIC_OVERFLOW)
                 
                 ;; Update state
                 (map-set balances tx-sender new-sender-balance)
@@ -132,6 +144,11 @@
                   (recipient-balance (default-to u0 (map-get? balances recipient)))
                   (new-recipient-balance (safe-add recipient-balance amount)))
                 
+                ;; Check for underflow/overflow
+                (asserts! (<= new-allowance allowance) ERR_INSUFFICIENT_ALLOWANCE)
+                (asserts! (<= new-owner-balance owner-balance) ERR_INSUFFICIENT_BALANCE)
+                (asserts! (>= new-recipient-balance recipient-balance) ERR_ARITHMETIC_OVERFLOW)
+                
                 ;; Update state
                 (map-set allowances {owner: owner, spender: tx-sender} new-allowance)
                 (map-set balances owner new-owner-balance)
@@ -158,6 +175,10 @@
             ;; Calculate new values safely
             (let ((new-sender-balance (safe-sub sender-balance amount))
                   (new-supply (safe-sub current-supply amount)))
+                
+                ;; Check for underflow
+                (asserts! (<= new-sender-balance sender-balance) ERR_INSUFFICIENT_BALANCE)
+                (asserts! (<= new-supply current-supply) ERR_INSUFFICIENT_BALANCE)
                 
                 ;; Update state
                 (map-set balances tx-sender new-sender-balance)
