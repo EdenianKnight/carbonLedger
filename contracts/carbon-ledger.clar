@@ -23,6 +23,7 @@
 (define-constant ERR_INVALID_AMOUNT (err u4))
 (define-constant ERR_METADATA_EXISTS (err u5))
 (define-constant ERR_METADATA_NOT_FOUND (err u6))
+(define-constant ERR_ARITHMETIC_OVERFLOW (err u7))
 
 ;; Initialize the contract
 (define-public (initialize)
@@ -33,19 +34,40 @@
     )
 )
 
+;; Safe add function to prevent overflows
+(define-private (safe-add (a uint) (b uint))
+    (let ((sum (+ a b)))
+        (asserts! (>= sum a) ERR_ARITHMETIC_OVERFLOW)
+        sum
+    )
+)
+
+;; Safe subtract function to prevent underflows
+(define-private (safe-sub (a uint) (b uint))
+    (asserts! (>= a b) ERR_INSUFFICIENT_BALANCE)
+    (- a b)
+)
+
 ;; Mint new carbon credits (only contract owner can mint)
 (define-public (mint (recipient principal) (amount uint))
     (begin
+        ;; Check permissions and input validation
         (asserts! (is-eq tx-sender CONTRACT_OWNER) ERR_NOT_OWNER)
         (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+        
         (let ((current-balance (default-to u0 (map-get? balances recipient)))
-              (new-balance (+ current-balance amount))
-              (current-supply (var-get total-supply))
-              (new-supply (+ current-supply amount)))
-            (map-set balances recipient new-balance)
-            (var-set total-supply new-supply)
-            (print {event: "mint", recipient: recipient, amount: amount})
-            (ok true)
+              (current-supply (var-get total-supply)))
+            
+            ;; Calculate new balances safely with overflow checks
+            (let ((new-balance (safe-add current-balance amount))
+                  (new-supply (safe-add current-supply amount)))
+                
+                ;; Update state
+                (map-set balances recipient new-balance)
+                (var-set total-supply new-supply)
+                (print {event: "mint", recipient: recipient, amount: amount})
+                (ok true)
+            )
         )
     )
 )
@@ -53,13 +75,25 @@
 ;; Transfer carbon credits from the sender to a recipient
 (define-public (transfer (recipient principal) (amount uint))
     (begin
+        ;; Input validation
         (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+        (asserts! (not (is-eq tx-sender recipient)) ERR_INVALID_AMOUNT)
+        
         (let ((sender-balance (default-to u0 (map-get? balances tx-sender))))
+            ;; Validate sender has enough balance
             (asserts! (>= sender-balance amount) ERR_INSUFFICIENT_BALANCE)
-            (map-set balances tx-sender (- sender-balance amount))
-            (map-set balances recipient (+ (default-to u0 (map-get? balances recipient)) amount))
-            (print {event: "transfer", sender: tx-sender, recipient: recipient, amount: amount})
-            (ok true)
+            
+            ;; Calculate new balances safely
+            (let ((new-sender-balance (safe-sub sender-balance amount))
+                  (recipient-balance (default-to u0 (map-get? balances recipient)))
+                  (new-recipient-balance (safe-add recipient-balance amount)))
+                
+                ;; Update state
+                (map-set balances tx-sender new-sender-balance)
+                (map-set balances recipient new-recipient-balance)
+                (print {event: "transfer", sender: tx-sender, recipient: recipient, amount: amount})
+                (ok true)
+            )
         )
     )
 )
@@ -67,7 +101,11 @@
 ;; Approve an allowance for a spender
 (define-public (approve (spender principal) (amount uint))
     (begin
+        ;; Input validation
         (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+        (asserts! (not (is-eq tx-sender spender)) ERR_INVALID_AMOUNT)
+        
+        ;; Update state
         (map-set allowances {owner: tx-sender, spender: spender} amount)
         (print {event: "approve", owner: tx-sender, spender: spender, amount: amount})
         (ok true)
@@ -77,16 +115,30 @@
 ;; Transfer carbon credits on behalf of an owner using an allowance
 (define-public (transfer-from (owner principal) (recipient principal) (amount uint))
     (begin
+        ;; Input validation
         (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+        (asserts! (not (is-eq owner recipient)) ERR_INVALID_AMOUNT)
+        
         (let ((allowance (default-to u0 (map-get? allowances {owner: owner, spender: tx-sender})))
               (owner-balance (default-to u0 (map-get? balances owner))))
+            
+            ;; Validate allowance and balance
             (asserts! (>= allowance amount) ERR_INSUFFICIENT_ALLOWANCE)
             (asserts! (>= owner-balance amount) ERR_INSUFFICIENT_BALANCE)
-            (map-set allowances {owner: owner, spender: tx-sender} (- allowance amount))
-            (map-set balances owner (- owner-balance amount))
-            (map-set balances recipient (+ (default-to u0 (map-get? balances recipient)) amount))
-            (print {event: "transfer", sender: owner, recipient: recipient, amount: amount})
-            (ok true)
+            
+            ;; Calculate new values safely
+            (let ((new-allowance (safe-sub allowance amount))
+                  (new-owner-balance (safe-sub owner-balance amount))
+                  (recipient-balance (default-to u0 (map-get? balances recipient)))
+                  (new-recipient-balance (safe-add recipient-balance amount)))
+                
+                ;; Update state
+                (map-set allowances {owner: owner, spender: tx-sender} new-allowance)
+                (map-set balances owner new-owner-balance)
+                (map-set balances recipient new-recipient-balance)
+                (print {event: "transfer", sender: owner, recipient: recipient, amount: amount})
+                (ok true)
+            )
         )
     )
 )
@@ -94,15 +146,25 @@
 ;; Retire carbon credits (burn them permanently)
 (define-public (retire (amount uint))
     (begin
+        ;; Input validation
         (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+        
         (let ((sender-balance (default-to u0 (map-get? balances tx-sender)))
-              (current-supply (var-get total-supply))
-              (new-supply (- current-supply amount)))
+              (current-supply (var-get total-supply)))
+            
+            ;; Validate balance
             (asserts! (>= sender-balance amount) ERR_INSUFFICIENT_BALANCE)
-            (map-set balances tx-sender (- sender-balance amount))
-            (var-set total-supply new-supply)
-            (print {event: "retire", owner: tx-sender, amount: amount})
-            (ok true)
+            
+            ;; Calculate new values safely
+            (let ((new-sender-balance (safe-sub sender-balance amount))
+                  (new-supply (safe-sub current-supply amount)))
+                
+                ;; Update state
+                (map-set balances tx-sender new-sender-balance)
+                (var-set total-supply new-supply)
+                (print {event: "retire", owner: tx-sender, amount: amount})
+                (ok true)
+            )
         )
     )
 )
@@ -114,8 +176,12 @@
                              (location (string-utf8 50))
                              (verified bool))
     (begin
+        ;; Permission check
         (asserts! (is-eq tx-sender CONTRACT_OWNER) ERR_NOT_OWNER)
+        ;; Check if metadata already exists
         (asserts! (is-none (map-get? credit-metadata batch-id)) ERR_METADATA_EXISTS)
+        
+        ;; Add metadata
         (map-set credit-metadata batch-id {
             vintage: vintage,
             project-type: project-type,
