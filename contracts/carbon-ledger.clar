@@ -144,8 +144,5 @@
 
 ;; Get metadata for a batch of carbon credits
 (define-read-only (get-metadata (batch-id uint))
-    (match (map-get? credit-metadata batch-id)
-        metadata metadata
-        (err ERR_METADATA_NOT_FOUND)
-    )
+    (ok (map-get? credit-metadata batch-id))
 )
