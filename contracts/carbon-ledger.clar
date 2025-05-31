@@ -24,6 +24,7 @@
 (define-constant ERR_METADATA_EXISTS (err u5))
 (define-constant ERR_METADATA_NOT_FOUND (err u6))
 (define-constant ERR_ARITHMETIC_OVERFLOW (err u7))
+(define-constant ERR_INVALID_STRING (err u8))
 
 ;; Initialize the contract
 (define-public (initialize)
@@ -50,6 +51,16 @@
         (- a b)
         u0
     )
+)
+
+;; Validate string input - check if string is not empty and within reasonable bounds
+(define-private (is-valid-string (str (string-utf8 50)))
+    (and (> (len str) u0) (<= (len str) u50))
+)
+
+;; Validate vintage string - check if string is not empty and within bounds
+(define-private (is-valid-vintage (str (string-utf8 10)))
+    (and (> (len str) u0) (<= (len str) u10))
 )
 
 ;; Mint new carbon credits (only contract owner can mint)
@@ -201,6 +212,11 @@
         (asserts! (is-eq tx-sender CONTRACT_OWNER) ERR_NOT_OWNER)
         ;; Check if metadata already exists
         (asserts! (is-none (map-get? credit-metadata batch-id)) ERR_METADATA_EXISTS)
+        
+        ;; Validate string inputs
+        (asserts! (is-valid-vintage vintage) ERR_INVALID_STRING)
+        (asserts! (is-valid-string project-type) ERR_INVALID_STRING)
+        (asserts! (is-valid-string location) ERR_INVALID_STRING)
         
         ;; Add metadata
         (map-set credit-metadata batch-id {
